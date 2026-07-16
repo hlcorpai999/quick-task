@@ -444,8 +444,32 @@ function renderPendingScreen(user){
 /* ============ 主渲染 ============ */
 function render(){ renderApp(); }
 
+function captureAddFormDraft(){
+  const c = document.getElementById('addContent');
+  if(!c) return null;
+  return {
+    content: c.value,
+    dueDate: (document.getElementById('addDueDate')||{}).value || '',
+    assignees: Array.from(state.draftAssignees||[])
+  };
+}
+
+function restoreAddFormDraft(snap){
+  if(!snap) return;
+  const c = document.getElementById('addContent');
+  if(!c) return;
+  if(snap.content) c.value = snap.content;
+  const d = document.getElementById('addDueDate');
+  if(d && snap.dueDate) d.value = snap.dueDate;
+  state.draftAssignees = new Set(snap.assignees);
+  document.querySelectorAll('#assigneeChips .chip-toggle').forEach(chip=>{
+    if(state.draftAssignees.has(chip.dataset.uid)) chip.classList.add('selected');
+  });
+}
+
 function renderApp(){
   if(!state.user) return;
+  const _draftSnap = captureAddFormDraft();
   const app=document.getElementById('app');
   const todayTasks = state.taskCache.filter(t=>t.date===todayStr());
   const reminder = computeReminderCount();
@@ -505,6 +529,8 @@ function renderApp(){
       renderApp();
     });
   });
+
+  restoreAddFormDraft(_draftSnap);
 }
 
 function computeReminderCount(){
@@ -537,7 +563,6 @@ function renderAddForm(){
 }
 
 function wireAddForm(container){
-  state.draftAssignees = new Set();
   container.querySelectorAll('[data-action="toggle-assignee"]').forEach(chip=>{
     chip.addEventListener('click', ()=>{
       const uid=chip.dataset.uid;
@@ -579,6 +604,9 @@ async function onSubmitAddTask(){
     await addHistoryEntry('create', taskRef.id, `新增工作：${content.slice(0,40)}`, date);
     toast(`已新增工作 No.${pad2(seq)}，自動儲存完成`);
     contentEl.value='';
+    state.draftAssignees.clear();
+    if(dueEl) dueEl.value='';
+    document.querySelectorAll('#assigneeChips .chip-toggle.selected').forEach(c=>c.classList.remove('selected'));
   }catch(e){
     console.error(e);
     toast('新增失敗：'+(e.message||'請確認網路後再試一次'));
@@ -957,12 +985,8 @@ function renderSettingsView(root){
   });
 }
 
-/* ============ 防止打字時被同步蓋掉 ============ */
-document.addEventListener('focusout', e=>{
-  if(e.target.matches && e.target.matches('.t-content, .t-reply, #addContent')){
-    setTimeout(()=>{ if(!isTypingField()) renderApp(); }, 80);
-  }
-}, true);
+/* 註：草稿的保留/還原已改由 renderApp() 內的 captureAddFormDraft/restoreAddFormDraft 處理，
+   不再需要额外的 focusout 強制重繪，避免清空使用者尚未送出的輸入內容 */
 </script>
 </body>
 </html>
